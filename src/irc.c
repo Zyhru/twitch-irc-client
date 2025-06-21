@@ -30,7 +30,23 @@ int main(int argc, char **argv) {
         return -1;
     }
      
+    printf("Twitch bot authenticated!\n");
+    
+    keep_alive(irc_client);
     return 0;
+}
+
+// TODO: Maintain connection with Twitch IRC Server
+// TODO: Before maintaining a connection send the 'JOIN #<twitch_channel>' command
+// TODO: Listen for the 'PING' command
+
+void keep_alive(irc_client_t *client) {
+    message_t join = create_join_msg(client->channel_name);
+    send_irc_msg(client->fd, join.buffer, join.len);
+
+    for(;;) {
+
+    }
 }
 
 irc_client_t* establish_connection(char *ip, char *port) {
@@ -65,24 +81,30 @@ irc_client_t* establish_connection(char *ip, char *port) {
     return zai;
 }
 
+// NICK TestingTestingZai\r\n -> 24
 bool authenticate_bot(irc_client_t *client) {
-    puts("Authenticating Bot...");
+    printf("Authenticating Bot...\n");
     message_t pass = create_pass_msg(client->auth_token);
     message_t nick = create_nick_msg(client->nickname);
     
     message_t recv;
     recv.len = TWITCH_IRC_BUFF_SIZE;
     
-    printf("%s", pass.buffer);
-    printf("%s", nick.buffer);
+    //printf("%s", pass.buffer);
+    //printf("%s", nick.buffer);
    
     /*
         * Sending the following IRC Messages
         * PASS oauth:<access_token>
         * NICK <nickname of twitch bot>
     */
-    send_irc_msg(client->fd, pass.buffer, pass.len);
-    send_irc_msg(client->fd, nick.buffer, nick.len);
+    
+
+    ssize_t bytes_sent_p = send_irc_msg(client->fd, pass.buffer, pass.len);
+    ssize_t bytes_sent_n = send_irc_msg(client->fd, nick.buffer, pass.len);
+
+    printf("bytes_sent_p: %zu\n", bytes_sent_p);
+    printf("bytes_sent_n: %zu\n", bytes_sent_n);
 
     /*
         * Since my access token expired, I should expect the following message:
@@ -90,32 +112,32 @@ bool authenticate_bot(irc_client_t *client) {
         * otherwise: did not fail
         *
     */
-    //      0          1   2         3           4       5        6 
-    // :tmi.twitch.tv 421 you QPMLCJ8FHSTBLNME :Unknown command /r/n
+    //      0          1   2         3           4       5        
+    // :tmi.twitch.tv 421 you QPMLCJ8FHSTBLNME :Unknown command/r/n
     recv_irc_msg(client->fd, recv.buffer, recv.len);
-    printf("%s\n", recv.buffer);
-    
-    // iterate through the buffer until we hit \r\n
-    #if 0
-    size_t len = strlen(recv.buffer);
-    for(int i = 0; i < len; i++) {
-        printf("{%d} %d\n", i, (int)recv.buffer[i]);
-    }
-    #endif
+    //printf("%s\n", recv.buffer);
 
-    // parse raw irc message
-    string_t* list = init_string();
-    char *delim = " ";
-    char *token = strtok(recv.buffer, delim);
+    /* Parsing Raw IRC Message */
+    string_list_t* list = init_string();
+    const char *delim = " ";
+    char *token;
+    token = strtok(recv.buffer, delim);
    
     while(token != NULL) {
         append_string(list, token);
-        token = strtok(NULL, token);
+        token = strtok(NULL, delim); 
     }
-    
-    printf("List size: %zu\n", list->size);
-    for(int i = 0; i < list->size; i++) {
-        printf("{%d} %s\n", i, list->data[i]);
+
+    // list now has the raw irc message
+    // now we need to contruct the irc_raw_message_t struct
+    raw_irc_message_t irc_msg;
+    irc_msg.prefix = list->data[0];
+    irc_msg.command = list->data[1];
+
+    int trailing_index = trailing_param_index(list); 
+    if(strcmp(irc_msg.command, "421") == 0) {
+        twitch_response(trailing_index, list);
+        return false;
     }
     
     free(list->data);
@@ -124,33 +146,49 @@ bool authenticate_bot(irc_client_t *client) {
 
 message_t create_pass_msg(char *msg) {
     message_t irc_msg;
-    irc_msg.len = TWITCH_IRC_BUFF_SIZE;
-    snprintf(irc_msg.buffer, irc_msg.len, "PASS oauth:%s\r\n", msg);
-    return irc_msg;
-}
-
-message_t create_join_msg(char *msg) {
-    message_t irc_msg;
-    irc_msg.len = TWITCH_IRC_BUFF_SIZE;
-    snprintf(irc_msg.buffer, irc_msg.len, "JOIN #%s\r\n", msg);
+    int char_written = snprintf(irc_msg.buffer, irc_msg.len, "PASS oauth:%s\r\n", msg);
+    irc_msg.len = char_written;
     return irc_msg;
 }
 
 message_t create_nick_msg(char *msg) {
     message_t irc_msg;
-    irc_msg.len = TWITCH_IRC_BUFF_SIZE;
-    snprintf(irc_msg.buffer, irc_msg.len, "NICK %s\r\n", msg);
+    int char_written = snprintf(irc_msg.buffer, irc_msg.len, "NICK %s\r\n", msg);
+    irc_msg.len = char_written;
     return irc_msg;
 }
 
-int send_irc_msg(int fd, void *buff, size_t n) {
+message_t create_join_msg(char *msg) {
+    message_t irc_msg;
+    int char_written = snprintf(irc_msg.buffer, irc_msg.len, "JOIN #%s", msg);
+    irc_msg.len = char_written;
+    return irc_msg;
+}
+
+ssize_t send_irc_msg(int fd, void *buff, size_t n) {
     ssize_t bytes_sent = send(fd, buff, n, 0);
     return bytes_sent;
 }
 
-int recv_irc_msg(int fd, void *buff, size_t n) {
+ssize_t recv_irc_msg(int fd, void *buff, size_t n) {
     ssize_t bytes_recv = recv(fd, buff, n, 0);
     return bytes_recv;
+}
+
+int trailing_param_index(string_list_t *list) {
+    int i = 2;
+    for(i = 2; i < list->size; i++) {
+        if(list->data[i][0] == ':') break;
+    }
+
+    return i;
+}
+
+void twitch_response(int index, string_list_t *list) {
+    printf("\n-------Twitch Response-------\n");
+    for(int i = index; i < list->size; i++) {
+        printf("%s ", list->data[i]);
+    }
 }
 
 void print_irc_info(irc_client_t *irc) {}

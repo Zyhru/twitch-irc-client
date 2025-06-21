@@ -1,7 +1,7 @@
 #include "buffer.h"
 
-string_t* init_string() {
-    string_t *s = malloc(sizeof(string_t));
+string_list_t* init_string() {
+    string_list_t *s = malloc(sizeof(string_list_t));
     s->cap = LIST_CAPACITY;
     s->size = 0;
     s->data = malloc(sizeof(char *) * s->cap);
@@ -27,7 +27,7 @@ string_t* init_string() {
     return s;    
 }
 
-void append_string(string_t *s, char *item) {
+void append_string(string_list_t *s, char *item) {
     if(s->size >= s->cap)  {
         size_t new_cap = s->cap * 2;
         char **temp = realloc(s->data, sizeof(char *) * new_cap);
@@ -40,6 +40,14 @@ void append_string(string_t *s, char *item) {
         s->cap = new_cap;
         s->data = temp;
     }
-
+    
+    // size is 0
+    // s->data[0] = :tmi.twitch.tv
+    // s->data[1] = 421    
+    // s->data[2] = you
+    // s->data[3] = QPFGDKJGKLJGLKJGLK 
+    // s->data[4] = :Unknown
+    // s->data[5] = command
+    // final size is 6
     s->data[s->size++] = item;
 }
