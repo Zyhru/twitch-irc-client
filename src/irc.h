@@ -46,6 +46,7 @@ typedef struct {
     char *channel_name;
 } irc_client_t;
 
+
 /* ---- IRC Client Functionality ---  */
 irc_client_t* establish_connection(char* ip, char *port);
 bool authenticate_bot(irc_client_t *client);

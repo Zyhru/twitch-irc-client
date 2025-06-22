@@ -53,6 +53,12 @@ z-twitch-client <twitch_channel_name>
 ### 6/21/2025
 - [ ] Create a message based off the trailing params
 
+### 6/22/2025
+- [x] Plan out the logic and data flow on how consistently receive each
+message from my twitch chat
+- [x] Send over the JOIN message 
+- [ ] Handle PING message from Twitch
+
 ### Case 1
 :tmi.twitch.tv [prefix] 0
 421 [command] 1

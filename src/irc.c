@@ -10,29 +10,28 @@ int main(int argc, char **argv) {
         fprintf(stderr, "usage: z-twitch-client <twitch_channel_name>\n");
         return -1;
     }
-    
+
     twitch_irc_t twitch_irc_server;
     twitch_irc_server.ip = "irc.chat.twitch.tv";
     twitch_irc_server.port = "6667";
 
-    irc_client_t* irc_client = establish_connection(twitch_irc_server.ip, twitch_irc_server.port);
-    irc_client->channel_name = argv[1];
-    irc_client->nickname = "TestingTestingZai";
-    irc_client->auth_token = getenv("TWITCH_AUTH_TOKEN"); 
-    if(irc_client->auth_token == NULL) {
+    irc_client_t* irc = establish_connection(twitch_irc_server.ip, twitch_irc_server.port);
+    irc->channel_name = argv[1];
+    irc->nickname = "TestingTestingZai";
+    irc->auth_token = getenv("TWITCH_AUTH_TOKEN"); 
+    if(irc->auth_token == NULL) {
         fprintf(stderr, "TWITCH_AUTH_TOKEN env variable is not set!\n");
         return -1;
     }
    
     // for now this will ALWAYS return true
-    if(!authenticate_bot(irc_client)) {
+    if(!authenticate_bot(irc)) {
         fprintf(stderr, "Failed to authenticate bot\n");
         return -1;
     }
      
     printf("Twitch bot authenticated!\n");
-    
-    keep_alive(irc_client);
+    keep_alive(irc);
     return 0;
 }
 
@@ -44,7 +43,19 @@ void keep_alive(irc_client_t *client) {
     message_t join = create_join_msg(client->channel_name);
     send_irc_msg(client->fd, join.buffer, join.len);
 
+    message_t join_resp;
+    join_resp.len = TWITCH_IRC_BUFF_SIZE;
+    recv_irc_msg(client->fd, join_resp.buffer, join_resp.len);
+    
+    printf("Listening to Twitch channel: %s\n", client->channel_name);
     for(;;) {
+        char twitch_chat[TWITCH_IRC_BUFF_SIZE] = {0};
+        size_t bytes = recv_irc_msg(client->fd, twitch_chat, sizeof(twitch_chat));
+        
+        // if Twitch responds with PING
+        // respond with PONG
+
+        printf("%s", twitch_chat);
 
     }
 }
@@ -115,7 +126,7 @@ bool authenticate_bot(irc_client_t *client) {
     //      0          1   2         3           4       5        
     // :tmi.twitch.tv 421 you QPMLCJ8FHSTBLNME :Unknown command/r/n
     recv_irc_msg(client->fd, recv.buffer, recv.len);
-    //printf("%s\n", recv.buffer);
+    printf("%s\n", recv.buffer);
 
     /* Parsing Raw IRC Message */
     string_list_t* list = init_string();
@@ -160,7 +171,7 @@ message_t create_nick_msg(char *msg) {
 
 message_t create_join_msg(char *msg) {
     message_t irc_msg;
-    int char_written = snprintf(irc_msg.buffer, irc_msg.len, "JOIN #%s", msg);
+    int char_written = snprintf(irc_msg.buffer, irc_msg.len, "JOIN #%s\r\n", msg);
     irc_msg.len = char_written;
     return irc_msg;
 }
